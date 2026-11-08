@@ -36,22 +36,15 @@ same state.
 
 ## The hint
 
-The user tried a random APK called `Launcher-Sama` (`com.natureglass.launcher`, 50 KB,
-signed by `natureglass`). Running `aapt dump permissions` on it showed:
+Looking at third-party sideload APKs the user had tried on this device, we noticed one of
+them declared `WRITE_SECURE_SETTINGS` in its manifest alongside `INTERNET`,
+`ACCESS_NETWORK_STATE`, `ACCESS_WIFI_STATE`, `READ_EXTERNAL_STORAGE` and
+`RECEIVE_BOOT_COMPLETED` — and the device had installed it without crashing.
 
-```
-INTERNET
-ACCESS_NETWORK_STATE
-ACCESS_WIFI_STATE
-READ_EXTERNAL_STORAGE
-RECEIVE_BOOT_COMPLETED
-WRITE_SECURE_SETTINGS   <-- !
-```
-
-That last one is a `signatureOrSystem` protection level. On a real Android build Google ships
-to a user, it is impossible for a normal sideload APK to actually receive it. The fact that
-the author of this APK bothered to request it, and distributed it to users, suggested the
-author knew it would be granted on some devices.
+`WRITE_SECURE_SETTINGS` is a `signatureOrSystem` protection level. On a real Android build
+Google ships to a user, it is impossible for a normal sideload APK to actually receive it.
+The fact that the APK bothered to request it, and ran without a crash on this firmware,
+suggested the author either knew or hoped the device would grant it.
 
 Separately, the user had reported earlier in the session that "on this projector every app
 has 'Modify system settings' turned on". That is the `WRITE_SETTINGS` permission, which is a

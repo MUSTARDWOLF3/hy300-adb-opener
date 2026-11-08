@@ -1,120 +1,202 @@
 # HY300 ADB Opener
 
-Open wireless ADB on cheap Rockchip RK3326 Android 11 projectors (HY300 clones, ChipTrip boards)
-that ship with a `userdebug` build and have **no USB-A-to-A cable, no root, no Developer Options
-"Wireless debugging" toggle, and no way to flip ADB on from inside the menus that actually open the port**.
+> 🇪🇸 Español (principal) · [🇬🇧 English](README.en.md)
 
-**TL;DR**: the firmware grants `WRITE_SECURE_SETTINGS` to normal user apps, so a regular APK can
-call `Settings.Global.putInt("adb_wifi_enabled", 1)` and Android will start the TLS ADB service on
-a random port. The companion script finds it via mDNS and connects.
+Abre ADB inalámbrico en proyectores Android baratos con chip Rockchip RK3326 (clones del HY300,
+placas ChipTrip) que vienen con un firmware `userdebug` y **sin cable USB A-A, sin root, sin la
+opción "Depuración inalámbrica" en Opciones de desarrollador, y sin forma de encender ADB desde
+los menús que realmente abren el puerto**.
 
-## Does this work on my projector?
+**Resumen**: el firmware concede `WRITE_SECURE_SETTINGS` a apps normales de usuario, así que
+un APK común puede llamar a `Settings.Global.putInt("adb_wifi_enabled", 1)` y Android arranca
+el servicio TLS de ADB en un puerto aleatorio. El script compañero lo encuentra por mDNS y
+se conecta.
 
-This has only been tested on:
+## ¿Es mi proyector candidato? (chequeo rápido)
 
-| Field | Value |
+Marca mentalmente estas señales. Si ves 3 o más, hay muy buena chance de que funcione:
+
+- ☑️ **Lo compraste barato** como "HY300", "HY320", "L018", "Mini projector" o similar.
+- ☑️ **La caja dice "Android 12, 2 GB RAM, 16 GB"** pero cuando instalas CPU-Z ves Android 11,
+  1 GB RAM real y 4 GB de almacenamiento. Las specs están infladas.
+- ☑️ **En Opciones de desarrollador NO existe "Depuración inalámbrica"**, solo aparece "Depuración
+  USB" y quizás un interruptor llamado "Internet Adb" que al activarlo no abre ningún puerto.
+- ☑️ **El único puerto USB-A del proyector sirve solo para pendrives**, no para conectarlo a tu
+  PC con un cable.
+- ☑️ **La señal definitiva**: abres cualquier app en **Ajustes → Apps → [cualquier app]** y
+  ves que **"Modificar ajustes del sistema"** ya está activado por defecto, en todas las
+  apps. Eso indica que el firmware es `userdebug` y esta app debería funcionar.
+- ☑️ Al abrir CPU-Z, en la pestaña System el "Número de versión" contiene la palabra
+  `userdebug`. Confirmación técnica final.
+
+Si marcas 3 o más → prueba la app, no hace daño si no funciona.
+Si no marcas ninguna → probablemente tu dispositivo tiene firmware `user` normal y esta app no
+sirve (te lo dirá y no cambiará nada).
+
+## ¿Funciona en mi proyector?
+
+Probado en:
+
+| Dato | Valor |
 |---|---|
-| Model string | `Projector` |
-| Build fingerprint | `rockchip/rk3326_rgo/rk3326_rgo:11/RD2A.211001.002/eng.penggw.20260108.110245:userdebug/release-keys` |
-| Board | ChipTrip, `rk30board`, Allwinner naming scheme but actually Rockchip RK3326 |
+| Modelo que muestra | `Projector` |
+| Fingerprint | `rockchip/rk3326_rgo/rk3326_rgo:11/RD2A.211001.002/eng.penggw.20260108.110245:userdebug/release-keys` |
+| Placa | ChipTrip, `rk30board` |
 | SoC | Rockchip RK3326 (4× Cortex-A35 @ 1.5 GHz, Mali-G31) |
 | Android | 11 (API 30) |
-| RAM / Storage | 1 GB / 4 GB |
-| Advertised specs | "Android 12, 2 GB + 16 GB" (inflated) |
+| RAM / Almacenamiento real | 1 GB / 4 GB |
+| RAM / Almacenamiento anunciado | 2 GB + 16 GB (inflado) |
 
-**It should work** on any build that satisfies two conditions:
+**Debería funcionar** si tu firmware cumple dos cosas:
 
-1. `ro.build.type=userdebug` (check with CPU-Z, under SoC → "Build ID"; or search the "Número de
-   versión" field in Ajustes → Acerca de for `userdebug`).
-2. Every app on the device already has "Modify system settings" granted by default — which is the
-   dead giveaway of a `userdebug` build shipped to a consumer device.
+1. `ro.build.type=userdebug`. Mírelo con CPU-Z en SoC → Build ID, o busque la palabra
+   `userdebug` en Ajustes → Acerca de → Número de versión.
+2. Todas las apps ya tienen el permiso "Modificar ajustes del sistema" activado por defecto —
+   la señal clara de un build `userdebug` entregado como producto final.
 
-**It will NOT work** on:
+**NO funciona** en firmwares `user` (teles, celulares, dispositivos legítimos). La app te lo
+dirá y no cambiará nada.
 
-- Proper `user` builds (TVs, phones, most legitimate devices).
-- Firmwares where the app installs but Android denies `WRITE_SECURE_SETTINGS` — the app will tell
-  you clearly that nothing was accepted. Nothing is modified in that case.
+## Qué hace
 
-## What it does
+1. Intenta escribir `adb_wifi_enabled=1`, `adb_enabled=1` y algunas claves de ajustes.
+   En un build `userdebug` pasan porque `WRITE_SECURE_SETTINGS` ya está concedido.
+2. El init de Android arranca el servicio TLS de ADB en un puerto alto aleatorio.
+3. El servicio se anuncia por mDNS (`_adb-tls-connect._tcp`).
+4. Desde tu PC: `adb mdns services`, ves el puerto, y `adb connect <ip>:<puerto>`.
+5. A diferencia de la depuración inalámbrica normal, **no pide código de emparejamiento** —
+   el build autoriza la conexión sin preguntar.
 
-1. The app tries to write `adb_wifi_enabled=1`, `adb_enabled=1` and a few related settings keys.
-   On a `userdebug` build these succeed because `WRITE_SECURE_SETTINGS` is pre-granted.
-2. Android's own init starts the TLS ADB service on a random high port.
-3. The service announces itself via mDNS (`_adb-tls-connect._tcp`).
-4. You run `adb mdns services` from your PC, see the port, and `adb connect <ip>:<port>`.
-5. Unlike normal wireless debugging, no pairing code is needed — the build is authorized to pair
-   silently.
+## Qué NO hace
 
-## What it does NOT do
+- **No** rootea el dispositivo.
+- **No** toca el firmware.
+- **No** cambia el launcher, instala apps, ni modifica datos de usuario.
+- **No** se conecta a internet. El APK no declara el permiso `INTERNET`.
 
-- It does **not** root your device.
-- It does **not** modify any system partition.
-- It does **not** change the launcher, install apps, or touch any user data.
-- It does **not** phone home. The APK has no `INTERNET` permission.
+## Instalación
 
-## Install and use
+### En el proyector
 
-### On the projector
+1. Copia `HY300-ADB-Opener-v1.0.apk` al proyector. La forma fácil: abre el administrador de
+   archivos del proyector, activa su servidor FTP, y copia el APK desde tu PC a
+   `/sdcard/Download/`.
+2. Abre el APK desde el administrador de archivos e instala. Permite "orígenes desconocidos"
+   si lo pide.
+3. Abre la app. Verás una pantalla negra con los resultados paso a paso.
+4. Mira la línea "RESULT" al final:
+   - "At least one method succeeded" → pasa a la sección de tu PC.
+   - "No method succeeded" → tu firmware no concede el permiso. Nada fue modificado.
 
-1. Copy `HY300-ADB-Opener-v1.0.apk` to the projector. Easiest way: open the stock File Manager,
-   enable its FTP server, and copy the APK from your PC to `/sdcard/Download/`.
-2. Open the APK with the File Manager and install. Allow "Unknown sources" if asked.
-3. Open the app. You will see a black screen with step-by-step results.
-4. Read the "RESULT" line at the bottom:
-   - "At least one method succeeded" → go to the next section on your PC.
-   - "No method succeeded" → your firmware denies the permission. Nothing was changed.
-
-### On your PC (Windows)
+### En tu PC (Windows)
 
 ```powershell
 adb mdns services
-adb connect <ip>:<port>
+adb connect <ip>:<puerto>
 adb devices
 ```
 
-Where `<ip>:<port>` is the line that looks like:
+Donde `<ip>:<puerto>` es la línea que se parece a:
 
 ```
 adb-XXXXXXXXXXX-XXXXXX   _adb-tls-connect._tcp   192.168.1.170:40903
 ```
 
-You should now see the projector as `device` (not `unauthorized`, not `offline`).
+El proyector saldrá como `device` (no como `unauthorized` ni `offline`).
 
-A helper script is in `scripts/connect.ps1` for Windows and `scripts/connect.sh` for Linux / macOS.
+Hay un script de ayuda en `scripts/connect.ps1` (Windows) y `scripts/connect.sh`
+(Linux / macOS).
 
-## Risks
+## ¿Y después?
 
-- If the projector will not boot after installing this, factory reset is the only recovery. Press
-  the pinhole reset button under the HDMI port with a paperclip while powering on.
-- The `userdebug` build is itself a security concern (any app can modify secure settings).
-  Consider this a side effect of that pre-existing weakness, not something this app creates.
-- Treat other apps on this device with caution. One user reported that `Launcher-Sama`
-  (`com.natureglass.launcher`, 50 KB APK with `WRITE_SECURE_SETTINGS + INTERNET +
-  RECEIVE_BOOT_COMPLETED`) silently installed `com.google.android.adnoneu` on their device
-  during testing.
+Esta app solo abre la puerta. Una vez que tu PC vea el proyector como `device`, puedes hacer
+con él lo que harías con cualquier Android TV via ADB. Algunas ideas, de más fácil a más
+avanzada:
 
-## Build from source
+### 1. Debloat (quitar lo que no usas)
 
-Requires JDK 17, Android SDK platform 34 and build-tools 34.0.0.
+Con ADB abierto puedes desactivar apps de telemetría, anuncios y utilidades de fábrica sin
+desinstalarlas (reversible). Ejemplo para quitar la telemetría ADUPS, el reproductor de
+anuncios y las actualizaciones chinas de firmware:
+
+```bash
+adb shell pm disable-user --user 0 com.adups.fota
+adb shell pm disable-user --user 0 com.fotas.wanapp
+adb shell pm disable-user --user 0 android.rockchip.update.service
+adb shell pm disable-user --user 0 com.xintu.systemadplayer
+adb shell pm disable-user --user 0 com.chiptrip.clearmemory
+```
+
+Para revertir: `pm enable` con el mismo paquete. Todo lo que desactives queda en
+`adb shell pm list packages -d`.
+
+### 2. Reemplazar el launcher
+
+El launcher de fábrica (`com.chiptrip.tvlauncher.rk.zx` en este modelo) es feo y muestra
+publicidad. Recomendado: **CleanYourTV** de Gathin23, un launcher libre tipo Apple TV con
+temas, saludo personalizable y biblioteca de apps.
+
+- Repo: https://github.com/Gathin23/cleanyourtv
+- Es un launcher pensado para aplicarse via ADB, así que encaja perfectamente con el acceso
+  que esta app te acaba de dar.
+- Trae scripts de debloat con listas por modelo. En este proyector las listas específicas
+  no existen (es placa ChipTrip RK3326, no documentada), pero puedes empezar por desactivar
+  los paquetes `com.adups.*`, `com.fotas.*`, `com.xintu.*` y `com.chiptrip.*` que no uses.
+
+### 3. Bloquear anuncios en tu red
+
+Independiente del proyector, cambia el DNS en tu router a un servicio bloqueador de
+anuncios (por ejemplo AdGuard DNS: `94.140.14.14` y `94.140.15.15`). Esto reduce el tráfico
+de anuncios en TODO lo conectado a tu Wi-Fi, no solo el proyector.
+
+### Importante: el puerto cambia al reiniciar
+
+Cada vez que el proyector arranca, Android asigna un puerto diferente para ADB. Vuelve a
+abrir esta app o usa `scripts/connect.ps1`/`scripts/connect.sh`, que lo descubre por mDNS
+automáticamente.
+
+## Riesgos
+
+- Si el proyector no arranca tras instalar, el único rescate es el reset de fábrica. Pulsa el
+  botón de pinhole bajo el HDMI con un clip al encender.
+- El build `userdebug` es ya en sí un problema de seguridad: cualquier app puede modificar
+  ajustes secretos. Este APK aprovecha ese problema; no lo crea.
+- **Bloatware de fábrica sospechoso.** Un reset de fábrica de este proyector deja instalada
+  `com.google.android.adnoneu`, con nombre disfrazado como si fuera una app de Google (las apps
+  reales de Google llevan `com.google.android.*`, pero no existe ningún producto oficial llamado
+  "adnoneu"). Reaparece tras cualquier reset, lo que confirma que la añadió el fabricante, no
+  una app que el usuario instaló. Recomendado quitarla con:
+  ```bash
+  adb shell pm uninstall --user 0 com.google.android.adnoneu
+  ```
+- **Cualquier APK ajeno con `WRITE_SECURE_SETTINGS` sobre este firmware tiene el mismo poder
+  que esta app.** Antes de instalar cualquier launcher o utilidad de origen desconocido,
+  revisa qué permisos pide (con `aapt dump permissions app.apk` o una app como "Package
+  Inspector"). Si pide `WRITE_SECURE_SETTINGS + INTERNET + RECEIVE_BOOT_COMPLETED` y pesa
+  poco, trátalo con cuidado.
+
+## Compilar desde el código
+
+Requiere JDK 17, Android SDK platform 34 y build-tools 34.0.0.
 
 ```bash
 ./gradlew assembleRelease
 ```
 
-The release APK is signed with the debug key so it installs over sideload the same way the
-reference build does. For redistribution please sign with your own key.
+El APK se firma con la clave de debug para que se pueda sideload como el build de referencia.
+Para redistribución, firma con tu propia clave.
 
-## Credits
+## Enlaces
 
-- Investigation and release: MUSTARDWOLF3 (Iquitos, Peru).
-- Technical pair-programming: Claude (Anthropic).
-- Based on the empirical observation that `com.natureglass.launcher` also carries
-  `WRITE_SECURE_SETTINGS` — which hinted that the firmware grants it to normal apps.
+- [🇬🇧 README in English](README.en.md)
+- [Narrativa técnica (cómo lo descubrimos)](docs/INVESTIGATION.md)
+- [Descargar APK v1.0](https://github.com/MUSTARDWOLF3/hy300-adb-opener/releases/latest)
 
-## License
+## Créditos
 
-MIT. See `LICENSE`.
+- Investigación y release: MUSTARDWOLF3 (Iquitos, Perú).
+- Programación en pareja técnica: Claude (Anthropic).
 
-## Español
+## Licencia
 
-Para instrucciones en español: `README.es.md`.
+MIT. Ver `LICENSE`.
