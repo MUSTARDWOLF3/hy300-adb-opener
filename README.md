@@ -107,6 +107,21 @@ El proyector saldrá como `device` (no como `unauthorized` ni `offline`).
 Hay un script de ayuda en `scripts/connect.ps1` (Windows) y `scripts/connect.sh`
 (Linux / macOS).
 
+## Si no te deja instalar el APK
+
+Reportado por un usuario con un clon HY300: el instalador del proyector bloqueaba la
+instalación con el Wi-Fi activo. Solución:
+
+1. Reinicio de fábrica del proyector (Ajustes → Sistema → Restablecer).
+2. **Apaga el Wi-Fi** antes de abrir el APK.
+3. Instala la app desde el administrador de archivos.
+4. Vuelve a encender el Wi-Fi.
+5. Abre la app normalmente.
+
+Causa probable: con red activa, Play Protect consulta online y bloquea instalaciones
+laterales en firmwares con Play Services sin certificar (habitual en estos clones).
+Sin red, la comprobación falla por timeout y la instalación pasa.
+
 ## ¿Y después?
 
 Esta app solo abre la puerta. Una vez que tu PC vea el proyector como `device`, puedes hacer
